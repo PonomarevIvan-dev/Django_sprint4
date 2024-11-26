@@ -15,5 +15,3 @@ class CommentEditMixin:
     def get_success_url(self):
         return reverse('blog:post_detail',
                        kwargs={'post_id': self.kwargs['post_id']})
-
-
