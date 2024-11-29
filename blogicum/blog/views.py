@@ -1,4 +1,4 @@
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count
 from django.contrib.auth import login
 from django.shortcuts import get_object_or_404, redirect
@@ -20,7 +20,8 @@ from .forms import (
     EditUserProfileForm,
 )
 from .models import Category, Post, Comment, User
-from .mixins import PostMixin, CommentEditMixin
+from .mixins import (PostMixin, CommentEditMixin, AuthorPermissionMixin,
+                     AuthorRequiredMixin)
 from .managers import filtered_post
 
 
@@ -45,8 +46,7 @@ class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
         )
 
 
-class PostDeleteView(UserPassesTestMixin, PostMixin,
-                     DeleteView):
+class PostDeleteView(AuthorRequiredMixin, PostMixin, DeleteView):
     """
     Удаление поста. Доступно только автору поста.
     После удаления перенаправляет на главную страницу.
@@ -54,23 +54,12 @@ class PostDeleteView(UserPassesTestMixin, PostMixin,
 
     pk_url_kwarg = 'post_id'
 
-    def test_func(self):
-        object = self.get_object()
-        return object.author == self.request.user
-
-    def handle_no_permission(self):
-        return redirect(
-            'blog:post_detail', post_id=self.get_object().pk
-        )
-
     def get_success_url(self):
-        return reverse(
-            'blog:index',
-        )
+        return reverse('blog:index')
 
 
-class PostUpdateView(LoginRequiredMixin, UserPassesTestMixin,
-                     PostMixin, UpdateView):
+class PostUpdateView(LoginRequiredMixin,
+                     AuthorRequiredMixin, PostMixin, UpdateView):
     """
     Редактирование поста. Доступно только автору поста.
     После успешного обновления перенаправляет на страницу поста.
@@ -83,15 +72,6 @@ class PostUpdateView(LoginRequiredMixin, UserPassesTestMixin,
         return reverse(
             'blog:post_detail',
             kwargs={'post_id': self.kwargs['post_id']}
-        )
-
-    def test_func(self):
-        object = self.get_object()
-        return object.author == self.request.user
-
-    def handle_no_permission(self):
-        return redirect(
-            'blog:post_detail', post_id=self.get_object().pk
         )
 
 
@@ -107,7 +87,8 @@ class CommentCreateView(LoginRequiredMixin, CommentEditMixin, CreateView):
         return super().form_valid(form)
 
 
-class CommentDeleteView(LoginRequiredMixin, CommentEditMixin, DeleteView):
+class CommentDeleteView(LoginRequiredMixin, CommentEditMixin,
+                        AuthorPermissionMixin, DeleteView):
     """
     Удаление комментария. Доступно только автору комментария.
     После удаления перенаправляет на страницу поста.
@@ -116,20 +97,9 @@ class CommentDeleteView(LoginRequiredMixin, CommentEditMixin, DeleteView):
     model = Comment
     pk_url_kwarg = 'comment_id'
 
-    def dispatch(self, request, *args, **kwargs):
-        comment = get_object_or_404(
-            Comment,
-            pk=kwargs['comment_id'],
-        )
-
-        if comment.author != request.user:
-            return redirect('blog:post_detail', post_id=kwargs['post_id'])
-
-        return super().dispatch(request, *args, **kwargs)
-
     def get_success_url(self):
-        return reverse('blog:post_detail', kwargs={'post_id':
-                                                   self.kwargs['post_id']})
+        return reverse('blog:post_detail',
+                       kwargs={'post_id': self.kwargs['post_id']})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -137,17 +107,13 @@ class CommentDeleteView(LoginRequiredMixin, CommentEditMixin, DeleteView):
         return context
 
 
-class CommentUpdateView(LoginRequiredMixin, CommentEditMixin, UpdateView):
+class CommentUpdateView(LoginRequiredMixin, CommentEditMixin,
+                        AuthorPermissionMixin, UpdateView):
     """Редактирование комментария. Доступно только автору комментария."""
 
     form_class = CreateCommentForm
     model = Comment
-
-    def dispatch(self, request, *args, **kwargs):
-        comment = get_object_or_404(Comment, pk=kwargs['comment_id'],)
-        if comment.author != request.user:
-            return redirect('blog:post_detail', post_id=kwargs['post_id'])
-        return super().dispatch(request, *args, **kwargs)
+    pk_url_kwarg = 'comment_id'
 
 
 class ProfileListView(ListView):
